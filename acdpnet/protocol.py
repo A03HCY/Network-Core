@@ -88,23 +88,23 @@ class Protocol:
     
     def readbit(self, buff:int) -> tuple:
         # meta, bool of if is all has been read
-        try:
-            return self.read(length=buff), False
-        except:
-            return self.read(), True
+        if self.now + buff <= self.leng:
+            return self.read(buff), False
+        else:
+            return self.read(self.now + buff - self.leng), True
     
     def seek(self, location:int) -> None:
         if location > self.leng:raise LookupError('Out of writable range')
         self.now = location
     
-    def load_stream(self, func, from_head:tuple=None) -> bool:
+    def load_stream(self, func, from_head:tuple=None):
         if not from_head:
             self.extn, self.leng, _ = self.parse_stream_head(func)
         else:
             self.extn, self.leng, _ = from_head
         self.meta = self.stream_until(func, self.leng)
         self.update()
-        return True
+        return self
     
     def create_stream(self, func) -> None:
         original_now = self.now
@@ -190,6 +190,11 @@ def send(data:Protocol):
     wtio = datasets.get('writeio')
     data.create_stream(wtio)
 
+def recv() -> Protocol:
+    if not datasets.get('readio'): return
+    rdio = datasets.get('readio')
+    data = Protocol().load_stream(rdio)
+    return data
 
 class Autils:
     @staticmethod
@@ -239,13 +244,17 @@ class Acdpnet:
         while not self.head_que.empty():
             head = self.head_que.get()
             head.create_stream(self.leavin)
-        for i in self.pool:
+        if not self.pool: return
+        print(self.pool)
+        for i in list(self.pool.keys()):
             data = self.pool[i]
             meta, end = data.readbit(2048)
+            print('sded', end, data)
             meta = Protocol(meta=meta, extension='.multi_obj.{}'.format(i))
             meta.create_stream(self.leavin)
             if not end: continue
-            del self.pool[i]
+            self.pool.pop(i)
+            print('sdall', data)
     
     def singl_send(self):
         for i in self.list_snd: i.create_stream(self.leavin)
@@ -257,6 +266,8 @@ class Acdpnet:
         leng = data.leng
         meta = data.meta
         head, extn = Autils.chains(data.extn)
+
+        print('Net', data)
         
         if head == 'multi_head':
             safe, extn = Autils.chains(extn)
@@ -293,6 +304,7 @@ class Acdpnet:
             self.recv_que.put(data)
             return
         unsave = self.recv_func(data)
+        print('arrived')
         if unsave in [None, False]: self.recv_que.put(data)
     
     def leavin(self, meta):
@@ -300,24 +312,39 @@ class Acdpnet:
         self.wt(meta)
     
     # Threading
-    def recv_start(self, wait:bool=False):
+    def auto_start(self, wait:bool=False):
         if self.tred: return
         self.tred = True
-        self.thread = td.Thread(target=self.recv_thread_func)
-        self.thread.start()
-        if wait: self.thread.join()
+        self.recv_thread = td.Thread(target=self.recv_thread_func)
+        self.recv_thread.start()
+        if wait: self.recv_thread.join()
+        self.send_thread = td.Thread(target=self.send_thread_func)
+        self.send_thread.start()
+        if wait: self.send_thread.join()
     
     def recv_join(self):
         if not self.tred: return
-        if self.thread: self.thread.join()
+        if self.recv_thread: self.recv_thread.join()
 
     def recv_thread_func(self):
         try:
-            while True: self.singl_recv()
+            while True:self.singl_recv()
         except:
-            print('Connection closed')
+            print('Connection closed (recv)')
             self.tred = False
     
+    def send_join(self):
+        if not self.tred: return
+        if self.send_thread: self.send_thread.join()
+
+    def send_thread_func(self):
+        try:
+            while True:
+                self.multi_send()
+                if not self.tred: raise InterruptedError('Interrupted by Recving thread')
+        except:
+            print('Connection closed (send)')
+
     @staticmethod
     def info(data:Protocol):
         info = Protocol(data.head(), extension='.multi_head')

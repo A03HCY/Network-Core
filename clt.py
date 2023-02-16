@@ -4,9 +4,12 @@ from acdpnet import protocol as pt
 
 sk = socket.socket()           
 
-sk.connect(('127.0.0.1', int(input('# '))))
+#sk.connect(('127.0.0.1', int(input('# '))))
+
+sk.connect(('127.0.0.1', 4443))
 
 pt.setio(sk.recv, sk.send)
+
 
 
 #ds = pt.Acdpnet()
