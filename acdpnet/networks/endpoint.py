@@ -26,7 +26,7 @@ class Endpoint:
         resl = func(data)
         if type(resl) == Protocol:
             self.net.multi_push(data)
-            print('pushed')
+            print('pushed', self.net.pool)
 
     def __hadl__(self, data:Protocol):
         print('Gate', data)
@@ -107,6 +107,6 @@ class SocketTerminal(Endpoint):
     def close(self):
         self.sk.close()
 
-    def run(self):
+    def keep(self):
         self.net.recv_thread.join()
         self.net.send_thread.join()

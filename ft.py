@@ -14,4 +14,4 @@ app.setnet('0.0.0.0', 4440).connect()
 
 app.send(Protocol(b'ft'))
 print('ok')
-app.run()
+app.keep()

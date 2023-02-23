@@ -18,3 +18,5 @@ def setdefault(key): return _ds.setdefault(key)
 
 def setlist(keys):
     for i in keys: _ds.setdefault(i)
+
+def update(dic:dict): _ds.update(dic)
