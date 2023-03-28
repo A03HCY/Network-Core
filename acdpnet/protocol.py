@@ -28,6 +28,7 @@ class Protocol:
         # update the head_data
         self.leng = len(self.meta)
 
+    @property
     def head(self) -> bytes:
         # return the head data
         self.update()
@@ -36,7 +37,7 @@ class Protocol:
     
     def pack(self) -> bytes:
         # return the full data
-        return self.head() + bytes(self.meta)
+        return self.head + bytes(self.meta)
     
     def unpack(self, data:bytes) -> bool:
         # give a full data then reset self by the result
@@ -81,7 +82,7 @@ class Protocol:
     def create_stream(self, func) -> None:
         original_now = self.now
         self.seek(0)
-        func(self.head())
+        func(self.head)
         self.stream_until(self.read, self.leng, writefunc=func)
         self.now = original_now
     
