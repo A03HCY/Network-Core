@@ -1,7 +1,12 @@
+from acdpnet import datasets
 from secrets import choice
 from string  import ascii_letters, digits
 from ast     import literal_eval
+
 import struct
+import queue
+import threading as td
+
 
 
 def safecode(length:int=4):
@@ -9,14 +14,31 @@ def safecode(length:int=4):
     return res
 
 
+def setio(read, write):
+    datasets.set('readio', read)
+    datasets.set('writeio', write)
+
+
+def gobwrite(fromfunc=None):
+    if fromfunc: return fromfunc
+    if datasets.get('writeio'): return datasets.get('writeio')
+    raise ValueError()
+
+
+def gobread(fromfunc=None):
+    if fromfunc: return fromfunc
+    if datasets.get('readio'): return datasets.get('readio')
+    raise ValueError()
+
+
 class Protocol:
     def __init__(self, meta:bytes=b'', extension:str='.unknow', encoding:str='utf-8') -> None:
-        self.buff = 2048
-        self.meta = bytearray(meta)
-        self.extn = extension
-        self.enco = encoding
-        self.leng = 0
-        self.now = 0
+        self.buff = 2048            # Buffer
+        self.meta = bytearray(meta) # Data content
+        self.extn = extension       # Label
+        self.enco = encoding        # Coding method
+        self.leng = 0               # Length of data content, auto-update with function updata()
+        self.now  = 0               # Coding method
         if meta:self.leng = len(meta)
         self.update()
     
@@ -42,7 +64,6 @@ class Protocol:
     def unpack(self, data:bytes) -> bool:
         # give a full data then reset self by the result
         self.extn, self.leng, seek = self.parse_static_head(data)
-        self.extn = self.extn.decode(self.enco)
         meta = data[seek:]
         if len(meta) == self.leng:
             self.meta = meta
@@ -66,18 +87,25 @@ class Protocol:
             return bytes(data)
         except:raise LookupError('Out of readable range')
     
+    def readbit(self, buff:int) -> tuple:
+        # meta, bool of if is all has been read
+        if self.now + buff <= self.leng:
+            return self.read(buff), False
+        else:
+            return self.read(self.now + buff - self.leng), True
+    
     def seek(self, location:int) -> None:
         if location > self.leng:raise LookupError('Out of writable range')
         self.now = location
     
-    def load_stream(self, func, from_head:tuple=None) -> bool:
+    def load_stream(self, func, from_head:tuple=None):
         if not from_head:
             self.extn, self.leng, _ = self.parse_stream_head(func)
         else:
             self.extn, self.leng, _ = from_head
         self.meta = self.stream_until(func, self.leng)
         self.update()
-        return True
+        return self
     
     def create_stream(self, func) -> None:
         original_now = self.now
@@ -117,7 +145,7 @@ class Protocol:
             elif not ignore:
                 data += temp
             seek += len(temp)
-            if seek == length:break
+            if seek >= length:break # DP: '>='
         return bytes(data)
     
     @staticmethod
@@ -156,3 +184,196 @@ class Protocol:
         ptcl = Protocol()
         ptcl.load_stream(func=func, from_head=head)
         return ptcl
+
+
+def send(data:Protocol):
+    if not datasets.get('writeio'): return
+    wtio = datasets.get('writeio')
+    data.create_stream(wtio)
+
+def recv() -> Protocol:
+    if not datasets.get('readio'): return
+    rdio = datasets.get('readio')
+    data = Protocol().load_stream(rdio)
+    return data
+
+class Autils:
+    @staticmethod
+    def chains(extn):
+        data = extn[1:].split('.')
+        head = data[0]
+        extn = '.' + '.'.join(data[1:])
+        return head, extn
+
+# Todo Apis:
+#   List processing datas in recving or sending
+#   then we need a Manager
+
+class Acdpnet:
+    def __init__(self):
+        self.ok = False
+        self.tred = False
+        self.temp_rcv = {}
+        self.recv_que = queue.Queue()
+        self.head_que = queue.Queue()
+        self.list_snd = []
+        self.pool = {}
+        self.recv_func = None
+        self.send_func = None
+        try:
+            self.setio()
+        except:pass
+
+    def setio(self, read=None, write=None):
+        self.rd = gobread(read)
+        self.wt = gobwrite(write)
+        self.ok = True
+        return self
+
+    def multi_push(self, data:Protocol):
+        # add a data to the que
+        safe = safecode(4)
+        self.pool[safe] = data
+        head = self.info(data)
+        head.extn += '.' + safe
+        self.head_que.put(head)
+    
+    def singl_push(self, data: Protocol):
+        self.list_snd.append(data)
+
+    def multi_send(self):
+        while not self.head_que.empty():
+            head = self.head_que.get()
+            head.create_stream(self.leavin)
+        if not self.pool: return
+        print(self.pool)
+        for i in list(self.pool.keys()):
+            data = self.pool[i]
+            meta, end = data.readbit(2048)
+            print('sded', end, data)
+            meta = Protocol(meta=meta, extension='.multi_obj.{}'.format(i))
+            meta.create_stream(self.leavin)
+            if not end: continue
+            self.pool.pop(i)
+            print('sdall', data)
+    
+    def singl_send(self):
+        for i in self.list_snd: i.create_stream(self.leavin)
+        self.list_snd = []
+
+    def singl_recv(self):
+        data = Protocol()
+        data.load_stream(self.rd)
+        leng = data.leng
+        meta = data.meta
+        head, extn = Autils.chains(data.extn)
+
+        print('Net', data)
+        
+        if head == 'multi_head':
+            safe, extn = Autils.chains(extn)
+            self.temp_rcv[safe] = {
+                'head': meta,
+                'meta': bytes(),
+                'leng': 0
+            }
+            return
+        if head == 'multi_obj':
+            safe, extn = Autils.chains(extn)
+            self.temp_rcv[safe]['meta'] += meta
+            self.temp_rcv[safe]['leng'] += data.leng
+
+            # leng info of head, in order to compa
+            _, tlen, _ = Protocol.parse_static_head(self.temp_rcv[safe]['head'])
+            if tlen == self.temp_rcv[safe]['leng']:
+                data = Protocol()
+                data.unpack(
+                    self.temp_rcv[safe]['head'] + self.temp_rcv[safe]['meta']
+                )
+                self.arrivin(data)
+                del self.temp_rcv[safe]
+            return
+        
+        self.arrivin(data)
+    
+    def multi_recv(self):
+        self.singl_recv()
+        while self.temp_rcv: self.singl_recv()
+    
+    def arrivin(self, data):
+        if not self.recv_func:
+            self.recv_que.put(data)
+            return
+        unsave = self.recv_func(data)
+        print('arrived')
+        if unsave in [None, False]: self.recv_que.put(data)
+    
+    def leavin(self, meta):
+        if self.send_func: self.send_func(meta)
+        self.wt(meta)
+    
+    # Threading
+    def auto_start(self, wait:bool=False):
+        if self.tred: return
+        self.tred = True
+        self.recv_thread = td.Thread(target=self.recv_thread_func)
+        self.recv_thread.start()
+        if wait: self.recv_thread.join()
+        self.send_thread = td.Thread(target=self.send_thread_func)
+        self.send_thread.start()
+        if wait: self.send_thread.join()
+    
+    def recv_join(self):
+        if not self.tred: return
+        if self.recv_thread: self.recv_thread.join()
+
+    def recv_thread_func(self):
+        try:
+            while True:self.singl_recv()
+        except:
+            print('Connection closed (recv)')
+            self.tred = False
+    
+    def send_join(self):
+        if not self.tred: return
+        if self.send_thread: self.send_thread.join()
+
+    def send_thread_func(self):
+        try:
+            while True:
+                self.multi_send()
+                if not self.tred: raise InterruptedError('Interrupted by Recving thread')
+        except:
+            print('Connection closed (send)')
+
+    @staticmethod
+    def info(data:Protocol):
+        info = Protocol(data.head(), extension='.multi_head')
+        return info
+
+
+class Netgroup:
+    def __init__(self):
+        self.pool = {}
+    
+    def add(self, net:Acdpnet, name:str):
+        self.pool[name] = net
+    
+    def net(self, name:str) -> Acdpnet:
+        return self.pool.get(name)
+    
+    def new(self, name:str, read, write) -> Acdpnet:
+        self.pool[name] = Acdpnet().setio(read=read, write=write)
+        return self.pool[name]
+    
+    def remove(self, name:str):
+        pass
+
+    def destroy(self, name:str):
+        pass
+
+
+'''
+.multi-{}.{safecode}.extn.args
+.extn.args
+'''
