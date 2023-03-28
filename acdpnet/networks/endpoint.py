@@ -26,7 +26,6 @@ class Endpoint:
         resl = func(data)
         if type(resl) == Protocol:
             self.net.multi_push(data)
-            print('pushed', self.net.pool)
 
     def __hadl__(self, data:Protocol):
         print('Gate', data)
@@ -55,19 +54,18 @@ class Endpoint:
         self.net.auto_start(wait=True)
 
 
-def Generate(data_handler:dict, tp:str='TCP'):
+def Generate(data_handler:dict):
     class Gate(sksv.BaseRequestHandler):
-        def __init__(self, *args):
-            self.data_handler = data_handler
-            self.tp = tp
-            super().__init__(*args)
         def setup(self):
             print('one in')
+
         def handle(self):
             net = Acdpnet().setio(read=self.request.recv, write=self.request.send)
-            end = Endpoint().setnet(net)
-            end.func = self.data_handler
-            end.run()
+            net.debug = True
+            self.end = Endpoint().setnet(net)
+            self.end.func = data_handler
+            self.end.run()
+            
         def finish(self):
             print('one out')
     return Gate
@@ -85,28 +83,23 @@ class SocketPiont(Endpoint):
         sksv.TCPServer((self.host, self.port), Generate(self.func)).serve_forever()
 
 
-class SocketTerminal(Endpoint):
-    def setnet(self, host:str, port:int):
+class SocketTerminal:
+    def connect(self, host:str, port:int):
         self.host = host
         self.port = port
         self.ok   = True
         self.sk   = socket.socket()
+        self.sk.connect((self.host, self.port))
+        self.net  = Acdpnet().setio(self.sk.recv, self.sk.send)
+        self.net.debug = True
+        self.net.auto_start()
         return self
 
-    def connect(self):
-        if not self.ok: raise EnvironmentError('Network was not set')
-        self.sk.connect((self.host, self.port))
-        self.net = Acdpnet().setio(read=self.sk.recv, write=self.sk.send)
-        self.net.recv_func = self.__hadl__
-        self.net.auto_start()
-
     def send(self, data:Protocol):
-        print('sd', data)
         self.net.multi_push(data)
+    
+    def recv(self) -> Protocol:
+        return self.net.recv_que.get()
     
     def close(self):
         self.sk.close()
-
-    def keep(self):
-        self.net.recv_thread.join()
-        self.net.send_thread.join()

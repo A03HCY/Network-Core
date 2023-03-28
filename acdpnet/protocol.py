@@ -6,6 +6,7 @@ from ast     import literal_eval
 import struct
 import queue
 import threading as td
+import time
 
 
 
@@ -49,6 +50,9 @@ class Protocol:
     def update(self):
         # update the head_data
         self.leng = len(self.meta)
+    
+    def upmeta(self, data):
+        self.meta = str(data).encode(self.enco)
 
     @property
     def head(self) -> bytes:
@@ -57,12 +61,23 @@ class Protocol:
         head_meta = self.make_head(self.extn, self.leng, self.enco)
         return head_meta
     
+    @property
+    def code(self) -> bytes:
+        return self.meta.decode(self.enco)
+    
+    @property
+    def json(self) -> dict:
+        data = literal_eval(self.code)
+        if type(data) != dict:
+            data = {data}
+        return data
+    
     def pack(self) -> bytes:
         # return the full data
         return self.head + bytes(self.meta)
     
     def unpack(self, data:bytes) -> bool:
-        # give a full data then reset self by the result
+        # give a full data then reset self by the data
         self.extn, self.leng, seek = self.parse_static_head(data)
         meta = data[seek:]
         if len(meta) == self.leng:
@@ -220,6 +235,7 @@ class Acdpnet:
         self.pool = {}
         self.recv_func = None
         self.send_func = None
+        self.debug = False
         try:
             self.setio()
         except:pass
@@ -233,10 +249,11 @@ class Acdpnet:
     def multi_push(self, data:Protocol):
         # add a data to the que
         safe = safecode(4)
-        self.pool[safe] = data
         head = self.info(data)
         head.extn += '.' + safe
         self.head_que.put(head)
+        self.pool[safe] = data
+        print('pushed', data, '\n', self.pool)
     
     def singl_push(self, data: Protocol):
         self.list_snd.append(data)
@@ -245,8 +262,10 @@ class Acdpnet:
         while not self.head_que.empty():
             head = self.head_que.get()
             head.create_stream(self.leavin)
+            print('one head sended')
+
         if not self.pool: return
-        print(self.pool)
+        print('now pool', self.pool)
         for i in list(self.pool.keys()):
             data = self.pool[i]
             meta, end = data.readbit(2048)
@@ -264,8 +283,6 @@ class Acdpnet:
     def singl_recv(self):
         data = Protocol()
         data.load_stream(self.rd)
-        leng = data.leng
-        meta = data.meta
         head, extn = Autils.chains(data.extn)
 
         print('Net', data)
@@ -273,14 +290,15 @@ class Acdpnet:
         if head == 'multi_head':
             safe, extn = Autils.chains(extn)
             self.temp_rcv[safe] = {
-                'head': meta,
+                'head': data.meta,
                 'meta': bytes(),
                 'leng': 0
             }
             return
         if head == 'multi_obj':
             safe, extn = Autils.chains(extn)
-            self.temp_rcv[safe]['meta'] += meta
+
+            self.temp_rcv[safe]['meta'] += data.meta
             self.temp_rcv[safe]['leng'] += data.leng
 
             # leng info of head, in order to compa
@@ -318,9 +336,9 @@ class Acdpnet:
         self.tred = True
         self.recv_thread = td.Thread(target=self.recv_thread_func)
         self.recv_thread.start()
-        if wait: self.recv_thread.join()
         self.send_thread = td.Thread(target=self.send_thread_func)
         self.send_thread.start()
+        if wait: self.recv_thread.join()
         if wait: self.send_thread.join()
     
     def recv_join(self):
@@ -328,6 +346,8 @@ class Acdpnet:
         if self.recv_thread: self.recv_thread.join()
 
     def recv_thread_func(self):
+        if self.debug:
+            while True:self.singl_recv()
         try:
             while True:self.singl_recv()
         except:
@@ -339,6 +359,10 @@ class Acdpnet:
         if self.send_thread: self.send_thread.join()
 
     def send_thread_func(self):
+        if self.debug:
+            while True:
+                self.multi_send()
+                if not self.tred: raise InterruptedError('Interrupted by Recving thread')
         try:
             while True:
                 self.multi_send()
@@ -348,7 +372,7 @@ class Acdpnet:
 
     @staticmethod
     def info(data:Protocol):
-        info = Protocol(data.head(), extension='.multi_head')
+        info = Protocol(data.head, extension='.multi_head')
         return info
 
 
