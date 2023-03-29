@@ -249,32 +249,33 @@ class Acdpnet:
     def multi_push(self, data:Protocol):
         # add a data to the que
         safe = safecode(4)
+        self.pool[safe] = data
         head = self.info(data)
         head.extn += '.' + safe
         self.head_que.put(head)
-        self.pool[safe] = data
-        print('pushed', data, '\n', self.pool)
+        print('已推送至发送列表', data, '\n', self.pool)
     
     def singl_push(self, data: Protocol):
         self.list_snd.append(data)
 
     def multi_send(self):
+        if not self.pool: return
+
         while not self.head_que.empty():
             head = self.head_que.get()
             head.create_stream(self.leavin)
-            print('one head sended')
+            print('新的数据头已发送')
 
-        if not self.pool: return
-        print('now pool', self.pool)
+        print('当前数据池', self.pool)
         for i in list(self.pool.keys()):
             data = self.pool[i]
             meta, end = data.readbit(2048)
-            print('sded', end, data)
+            print('已发送新的数据包', end, data)
             meta = Protocol(meta=meta, extension='.multi_obj.{}'.format(i))
             meta.create_stream(self.leavin)
             if not end: continue
             self.pool.pop(i)
-            print('sdall', data)
+            print('此数据已全部发送', data)
     
     def singl_send(self):
         for i in self.list_snd: i.create_stream(self.leavin)
@@ -285,7 +286,7 @@ class Acdpnet:
         data.load_stream(self.rd)
         head, extn = Autils.chains(data.extn)
 
-        print('Net', data)
+        print('网关收到', data)
         
         if head == 'multi_head':
             safe, extn = Autils.chains(extn)
@@ -322,9 +323,12 @@ class Acdpnet:
         if not self.recv_func:
             self.recv_que.put(data)
             return
+        print('转到自定义函数')
         unsave = self.recv_func(data)
-        print('arrived')
-        if unsave in [None, False]: self.recv_que.put(data)
+        print('自定义函数处理完成')
+        if unsave in [None, False]:
+            self.recv_que.put(data)
+            print('转到列队')
     
     def leavin(self, meta):
         if self.send_func: self.send_func(meta)

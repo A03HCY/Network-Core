@@ -27,7 +27,7 @@ class Server(endp.SocketPiont):
                 'resp': False
             }
         resp.upmeta(data)
-        print('resping', resp.json)
+        print('resping', resp)
         return resp
 
 
@@ -39,4 +39,4 @@ class Remote(endp.SocketTerminal):
         })
         self.send(data)
         resp = self.recv()
-        print(resp.json)
+        return resp.json.get('data', [])

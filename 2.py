@@ -5,6 +5,8 @@ a = Remote()
 
 a.connect('127.0.0.1', 3366)
 
-print(a.listdir('./'))
+s = a.listdir('./')
+
+print(s)
 
 a.close()

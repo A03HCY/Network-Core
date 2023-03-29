@@ -25,10 +25,10 @@ class Endpoint:
         func = self.func[head][0]
         resl = func(data)
         if type(resl) == Protocol:
-            self.net.multi_push(data)
+            self.net.multi_push(resl)
 
     def __hadl__(self, data:Protocol):
-        print('Gate', data)
+        print('Endpoint 处理入口收到', data)
         head, extn = Autils.chains(data.extn)
         head = '.' + head
         if head in self.func:
@@ -61,7 +61,7 @@ def Generate(data_handler:dict):
 
         def handle(self):
             net = Acdpnet().setio(read=self.request.recv, write=self.request.send)
-            net.debug = True
+            net.debug = False
             self.end = Endpoint().setnet(net)
             self.end.func = data_handler
             self.end.run()
@@ -91,7 +91,7 @@ class SocketTerminal:
         self.sk   = socket.socket()
         self.sk.connect((self.host, self.port))
         self.net  = Acdpnet().setio(self.sk.recv, self.sk.send)
-        self.net.debug = True
+        self.net.debug = False
         self.net.auto_start()
         return self
 
