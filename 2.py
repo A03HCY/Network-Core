@@ -5,8 +5,8 @@ a = Remote()
 
 a.connect('127.0.0.1', 3366)
 
-s = a.listdir('./')
+# print(a.listdir('./'))
 
-print(s)
+print(a.readfile('./1.py'))
 
 a.close()
