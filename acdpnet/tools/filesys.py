@@ -1,7 +1,7 @@
 from acdpnet.networks import endpoint as endp
 from acdpnet.protocol import Protocol
 from rich.console import Console
-import os, ast
+import os
 
 console = Console()
 
@@ -74,6 +74,23 @@ class Server(endp.SocketPiont):
         resp.meta = cont
         resp.extn = '.readfile_meta'
         return resp
+    
+    def on_file(self, meta:Protocol):
+        resp = Protocol(extension='.file_resp')
+        path = meta.json.get('path')
+        optn = meta.json.get('option')
+        if not os.path.isfile(path):
+            resp.upmeta({
+                'resp':False
+            })
+            return resp
+        if optn == 'size':
+            resp.upmeta({
+                'resp': True,
+                'size': os.path.getsize(path)
+            })
+            return resp
+    
 
 class Remote(endp.SocketTerminal):
     def listdir(self, path:str) -> list:
@@ -97,3 +114,15 @@ class Remote(endp.SocketTerminal):
         if '_resp' in resp.extn:
             raise IOError('')
         return resp.meta
+    
+    def filesize(self, path:str) -> int:
+        data = Protocol(extension='.file')
+        data.upmeta({
+            'path': path,
+            'option': 'size'
+        })
+        self.send(data)
+        resp = self.recv()
+        if resp.json.get('resp') == False:
+            raise IOError()
+        return resp.json.get('size')
