@@ -15,7 +15,8 @@ app.setnet(pt.Acdpnet())
 
 @app.route('unknow')
 def uk(data):
-    print(data.meta.decode('utf-8'))
+    msg = data.meta.decode('utf-8')
+    print(msg)
 
 app.run()
 

@@ -49,19 +49,38 @@ class Protocol:
     def update(self):
         # update the head_data
         self.leng = len(self.meta)
+<<<<<<< HEAD
         
+=======
+    
+    def upmeta(self, data):
+        self.meta = str(data).encode(self.enco)
+
+    @property
+>>>>>>> 38385438ca700aa4e0791aac0ad2d293d5c6c5d8
     def head(self) -> bytes:
         # return the head data
         self.update()
         head_meta = self.make_head(self.extn, self.leng, self.enco)
         return head_meta
     
+    @property
+    def code(self) -> bytes:
+        return self.meta.decode(self.enco)
+    
+    @property
+    def json(self) -> dict:
+        data = literal_eval(self.code)
+        if type(data) != dict:
+            data = {data}
+        return data
+    
     def pack(self) -> bytes:
         # return the full data
-        return self.head() + bytes(self.meta)
+        return self.head + bytes(self.meta)
     
     def unpack(self, data:bytes) -> bool:
-        # give a full data then reset self by the result
+        # give a full data then reset self by the data
         self.extn, self.leng, seek = self.parse_static_head(data)
         meta = data[seek:]
         if len(meta) == self.leng:
@@ -109,7 +128,7 @@ class Protocol:
     def create_stream(self, func) -> None:
         original_now = self.now
         self.seek(0)
-        func(self.head())
+        func(self.head)
         self.stream_until(self.read, self.leng, writefunc=func)
         self.now = original_now
     
@@ -219,6 +238,7 @@ class Acdpnet:
         self.pool = {}
         self.recv_func = None
         self.send_func = None
+        self.debug = False
         try:
             self.setio()
         except:pass
@@ -236,25 +256,29 @@ class Acdpnet:
         head = self.info(data)
         head.extn += '.' + safe
         self.head_que.put(head)
+        print('已推送至发送列表', data, '\n', self.pool)
     
     def singl_push(self, data: Protocol):
         self.list_snd.append(data)
 
     def multi_send(self):
+        if not self.pool: return
+
         while not self.head_que.empty():
             head = self.head_que.get()
             head.create_stream(self.leavin)
-        if not self.pool: return
-        print(self.pool)
+            print('新的数据头已发送')
+
+        print('当前数据池', self.pool)
         for i in list(self.pool.keys()):
             data = self.pool[i]
             meta, end = data.readbit(2048)
-            print('sded', end, data)
+            print('已发送新的数据包', end, data)
             meta = Protocol(meta=meta, extension='.multi_obj.{}'.format(i))
             meta.create_stream(self.leavin)
             if not end: continue
             self.pool.pop(i)
-            print('sdall', data)
+            print('此数据已全部发送', data)
     
     def singl_send(self):
         for i in self.list_snd: i.create_stream(self.leavin)
@@ -263,23 +287,22 @@ class Acdpnet:
     def singl_recv(self):
         data = Protocol()
         data.load_stream(self.rd)
-        leng = data.leng
-        meta = data.meta
         head, extn = Autils.chains(data.extn)
 
-        print('Net', data)
+        print('网关收到', data)
         
         if head == 'multi_head':
             safe, extn = Autils.chains(extn)
             self.temp_rcv[safe] = {
-                'head': meta,
+                'head': data.meta,
                 'meta': bytes(),
                 'leng': 0
             }
             return
         if head == 'multi_obj':
             safe, extn = Autils.chains(extn)
-            self.temp_rcv[safe]['meta'] += meta
+
+            self.temp_rcv[safe]['meta'] += data.meta
             self.temp_rcv[safe]['leng'] += data.leng
 
             # leng info of head, in order to compa
@@ -303,9 +326,12 @@ class Acdpnet:
         if not self.recv_func:
             self.recv_que.put(data)
             return
+        print('转到自定义函数')
         unsave = self.recv_func(data)
-        print('arrived')
-        if unsave in [None, False]: self.recv_que.put(data)
+        print('自定义函数处理完成')
+        if unsave in [None, False]:
+            self.recv_que.put(data)
+            print('转到列队')
     
     def leavin(self, meta):
         if self.send_func: self.send_func(meta)
@@ -317,9 +343,9 @@ class Acdpnet:
         self.tred = True
         self.recv_thread = td.Thread(target=self.recv_thread_func)
         self.recv_thread.start()
-        if wait: self.recv_thread.join()
         self.send_thread = td.Thread(target=self.send_thread_func)
         self.send_thread.start()
+        if wait: self.recv_thread.join()
         if wait: self.send_thread.join()
     
     def recv_join(self):
@@ -327,6 +353,8 @@ class Acdpnet:
         if self.recv_thread: self.recv_thread.join()
 
     def recv_thread_func(self):
+        if self.debug:
+            while True:self.singl_recv()
         try:
             while True:self.singl_recv()
         except:
@@ -338,6 +366,10 @@ class Acdpnet:
         if self.send_thread: self.send_thread.join()
 
     def send_thread_func(self):
+        if self.debug:
+            while True:
+                self.multi_send()
+                if not self.tred: raise InterruptedError('Interrupted by Recving thread')
         try:
             while True:
                 self.multi_send()
@@ -347,7 +379,7 @@ class Acdpnet:
 
     @staticmethod
     def info(data:Protocol):
-        info = Protocol(data.head(), extension='.multi_head')
+        info = Protocol(data.head, extension='.multi_head')
         return info
 
 
