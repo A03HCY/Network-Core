@@ -49,7 +49,7 @@ class Protocol:
     def update(self):
         # update the head_data
         self.leng = len(self.meta)
-
+        
     def head(self) -> bytes:
         # return the head data
         self.update()
