@@ -49,15 +49,11 @@ class Protocol:
     def update(self):
         # update the head_data
         self.leng = len(self.meta)
-<<<<<<< HEAD
-        
-=======
     
     def upmeta(self, data):
         self.meta = str(data).encode(self.enco)
 
     @property
->>>>>>> 38385438ca700aa4e0791aac0ad2d293d5c6c5d8
     def head(self) -> bytes:
         # return the head data
         self.update()
