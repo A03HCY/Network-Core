@@ -19,9 +19,9 @@ class ost:
 
 
 class Server(endp.SocketPiont):
-    def start(self):
+    def start(self, port:int):
         print(self.func)
-        self.setnet('0.0.0.0', 3366)
+        self.setnet('0.0.0.0', port)
         self.run()
 
     def on_listdir(self, meta:Protocol):

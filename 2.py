@@ -3,7 +3,7 @@ from acdpnet.tools.filesys import *
 
 a = Remote()
 
-a.connect('127.0.0.1', 3366)
+a.connect('127.0.0.1', 3368)
 
 # print(a.listdir('./'))
 

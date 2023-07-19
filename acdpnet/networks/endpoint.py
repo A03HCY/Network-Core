@@ -103,3 +103,24 @@ class SocketTerminal:
     
     def close(self):
         self.sk.close()
+
+
+class SingleTerminal:
+    def __init__(self, host:str, port:int):
+        self.host = host
+        self.port = port
+        self.sock = socket.socket()
+        pass
+
+    def connect(self):
+        self.sock.connect((self.host, self.port))
+
+    def send(self, data:Protocol):
+        data.create_stream(self.sock.send)
+    
+    def recv(self) -> Protocol:
+        data = Protocol().load_stream(self.sock.recv)
+        return data
+
+    def close(self):
+        self.sock.close()
