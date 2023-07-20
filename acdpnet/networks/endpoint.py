@@ -102,6 +102,7 @@ class SocketTerminal:
         return self.net.recv_que.get()
     
     def close(self):
+        self.sk.shutdown(2)
         self.sk.close()
 
 
