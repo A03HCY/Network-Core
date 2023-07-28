@@ -19,25 +19,11 @@ class ost:
 
 
 class Server(endp.SocketPiont):
-    def start(self):
+    
+    def start(self, port:int):
         print(self.func)
-        self.setnet('0.0.0.0', 3366)
+        self.setnet('0.0.0.0', port)
         self.run()
-
-    def on_listdir(self, meta:Protocol):
-        resp = Protocol(extension='.listdir_resp')
-        try:
-            data = {
-                'resp': True,
-                'data': ost.listdir(meta.json.get('path'))
-            }
-        except:
-            data = {
-                'resp': False
-            }
-        resp.upmeta(data)
-        print('resping', resp)
-        return resp
     
     def on_readfile(self, meta:Protocol):
         resp = Protocol(extension='.readfile_resp')
@@ -81,7 +67,7 @@ class Server(endp.SocketPiont):
         optn = meta.json.get('option')
         if not os.path.isfile(path):
             resp.upmeta({
-                'resp':False
+                'resp': False
             })
             return resp
         if optn == 'size':
@@ -90,18 +76,34 @@ class Server(endp.SocketPiont):
                 'size': os.path.getsize(path)
             })
             return resp
+        if optn == 'remove':
+            temp = True
+            try: os.remove(path)
+            except: temp = False
+            resp.upmeta({
+                'resp': temp
+            })
+            return resp
+
+    
+    def on_listdir(self, meta: Protocol):
+        resp = Protocol(extension='.listdir_resp')
+        path = meta.json.get('path')
+        if not os.path.exists(path):
+            resp.upmeta({
+                'resp':False
+            })
+            return resp
+        print(path)
+        resp.upmeta({
+            'resp': True,
+            'list': os.listdir(path)
+        })
+        return resp
     
 
 class Remote(endp.SocketTerminal):
-    def listdir(self, path:str) -> list:
-        data = Protocol(extension='.listdir')
-        data.upmeta({
-            'path' : path
-        })
-        self.send(data)
-        resp = self.recv()
-        return resp.json.get('data', [])
-    
+
     def readfile(self, path:str, seek:int=0, buff:int=0) -> bytes:
         data = Protocol(extension='.readfile')
         data.upmeta({
@@ -126,3 +128,15 @@ class Remote(endp.SocketTerminal):
         if resp.json.get('resp') == False:
             raise IOError()
         return resp.json.get('size')
+
+    def listdir(self, path:str) -> list:
+        data = Protocol(extension='.listdir')
+        data.upmeta({
+            'path': path
+        })
+        self.send(data)
+        resp = self.recv()
+        if resp.json.get('resp') == False:
+            raise OSError()
+        return resp.json.get('list')
+        

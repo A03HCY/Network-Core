@@ -1,13 +1,18 @@
 from acdpnet.tools.filesys import *
+from rich import *
 
 
 class App:
     def __init__(self) -> None:
-        pass
+        self.input()
 
     def endpiont(self):
         comd = ''
     
     def input(self) -> str:
-        data = input('[blue]# [/blue]')
+        data = input('$ ')
+        print(data)
+
+
+a = App()
 

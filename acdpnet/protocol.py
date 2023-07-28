@@ -44,13 +44,14 @@ class Protocol:
     
     def __str__(self) -> str:
         self.update()
-        return 'Type:{} Length:{:.0f}'.format(self.extn, self.leng)
+        return 'Type:{}\nLength:{:.0f}'.format(self.extn, self.leng)
     
     def update(self):
         # update the head_data
         self.leng = len(self.meta)
     
     def upmeta(self, data):
+        # reset the meta data
         self.meta = str(data).encode(self.enco)
 
     @property
@@ -59,13 +60,14 @@ class Protocol:
         self.update()
         head_meta = self.make_head(self.extn, self.leng, self.enco)
         return head_meta
-    
+
     @property
     def code(self) -> bytes:
         return self.meta.decode(self.enco)
     
     @property
     def json(self) -> dict:
+        print(self.code)
         data = literal_eval(self.code)
         if type(data) != dict:
             data = {data}
@@ -212,12 +214,29 @@ def recv() -> Protocol:
     return data
 
 class Autils:
+    def __init__(self):
+        self.used = False
+
     @staticmethod
     def chains(extn):
         data = extn[1:].split('.')
         head = data[0]
         extn = '.' + '.'.join(data[1:])
         return head, extn
+
+    def recv_head(self, func) -> tuple:
+        if self.used: raise IOError()
+        self.ptcl = Protocol(extension='.Autils')
+        self.head = self.ptcl.parse_stream_head(func=func)
+        self.func = func
+        self.used = True
+        return self.head
+    
+    def recv_body(self) -> Protocol:
+        if not self.used: raise IOError()
+        self.ptcl.load_stream(self.func, from_head=self.head)
+        self.used = False
+        return self.ptcl
 
 # Todo Apis:
 #   List processing datas in recving or sending
