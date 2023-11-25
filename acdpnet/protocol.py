@@ -49,10 +49,12 @@ class Protocol:
     def update(self):
         # update the head_data
         self.leng = len(self.meta)
+        return self
     
     def upmeta(self, data):
         # reset the meta data
         self.meta = str(data).encode(self.enco)
+        return self
 
     @property
     def head(self) -> bytes:
@@ -113,6 +115,7 @@ class Protocol:
     def seek(self, location:int) -> None:
         if location > self.leng:raise LookupError('Out of writable range')
         self.now = location
+        return self
     
     def load_stream(self, func, from_head:tuple=None):
         if not from_head:
@@ -129,6 +132,7 @@ class Protocol:
         func(self.head)
         self.stream_until(self.read, self.leng, writefunc=func)
         self.now = original_now
+        return self
     
     @staticmethod
     def ignore_stream(func, from_head:tuple) -> None:
@@ -202,17 +206,6 @@ class Protocol:
         return ptcl
 
 
-def send(data:Protocol):
-    if not datasets.get('writeio'): return
-    wtio = datasets.get('writeio')
-    data.create_stream(wtio)
-
-def recv() -> Protocol:
-    if not datasets.get('readio'): return
-    rdio = datasets.get('readio')
-    data = Protocol().load_stream(rdio)
-    return data
-
 class Autils:
     def __init__(self):
         self.used = False
@@ -238,9 +231,6 @@ class Autils:
         self.used = False
         return self.ptcl
 
-# Todo Apis:
-#   List processing datas in recving or sending
-#   then we need a Manager
 
 class Acdpnet:
     def __init__(self):
@@ -396,30 +386,3 @@ class Acdpnet:
     def info(data:Protocol):
         info = Protocol(data.head, extension='.multi_head')
         return info
-
-
-class Netgroup:
-    def __init__(self):
-        self.pool = {}
-    
-    def add(self, net:Acdpnet, name:str):
-        self.pool[name] = net
-    
-    def net(self, name:str) -> Acdpnet:
-        return self.pool.get(name)
-    
-    def new(self, name:str, read, write) -> Acdpnet:
-        self.pool[name] = Acdpnet().setio(read=read, write=write)
-        return self.pool[name]
-    
-    def remove(self, name:str):
-        pass
-
-    def destroy(self, name:str):
-        pass
-
-
-'''
-.multi-{}.{safecode}.extn.args
-.extn.args
-'''
